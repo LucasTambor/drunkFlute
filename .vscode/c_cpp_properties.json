@@ -1,0 +1,34 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/home/tambor/esp/esp-idf",
+                "/home/tambor/esp/esp-idf/components/freertos/include",
+                "/home/tambor/esp/esp-idf/components/newlib/include",
+                "/home/tambor/esp/esp-idf/components/esp32/include",
+                "/home/tambor/esp/esp-idf/components/soc/esp32/include",
+                "/home/tambor/esp/esp-idf/components/heap/include",
+                "/home/tambor/esp/esp-idf/components/soc/include",
+                "/home/tambor/esp/esp-idf/components/driver/include",
+                "/home/tambor/esp/esp-idf/components/esp_event/include",
+                "/home/tambor/esp/esp-idf/components/tcpip_adapter/include",
+                "/home/tambor/esp/esp-idf/components/lwip/lwip/src/include",
+                "/home/tambor/esp/esp-idf/components/lwip/port/esp32/include",
+                "/home/tambor/esp/esp-idf/components/lwip/include/apps",
+                "/home/tambor/esp/esp-idf/components/nvs_flash/include",
+                "/home/tambor/esp/esp-idf/components/spi_flash/include",
+                "/home/tambor/esp/esp-idf/components/log/include",
+                "${workspaceFolder}/build/include",
+                "${workspaceFolder}/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
