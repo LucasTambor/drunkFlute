@@ -19,6 +19,9 @@
 #include "lwip/netdb.h"
 
 #include "mqtt_client.h"
+
+#include "DHT11.h"
+
 // Heart beat blink period
 #define BLINK_PERIOD    1000
 
@@ -27,16 +30,22 @@
 #define SENSOR_N_VALUES 10 
 #define LED_PIN     GPIO_NUM_2
 
+// DHT
+#define DHT_PIN     32
+#define READ_DHT_PERIOD 2000
 // Prototypes
 esp_err_t event_handler(void *ctx, system_event_t *event);
 void HeartBeat(void *pvParameter);
 void SensorReading(void *pvParameter);
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event);
 static void mqtt_app_start(void);
+void dhtRead();
+void sendMqtt();
 //*****************************************************************************************************
 
 static EventGroupHandle_t wifi_event_group;
 const static int CONNECTED_BIT = BIT0;
+dht_t dht_value;
 
 //*****************************************************************************************************
 // MQTT Cloud INFO
@@ -69,6 +78,7 @@ void app_main(void)
     ESP_ERROR_CHECK( esp_wifi_connect() );
     
     ESP_LOGI("MAIN", "Inicio");
+
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 
     adc1_config_width(ADC_WIDTH_BIT_12);
@@ -77,7 +87,9 @@ void app_main(void)
     mqtt_app_start();
 
     xTaskCreate(&HeartBeat, "HB", 1024, NULL, 2, NULL);
-    xTaskCreate(&SensorReading, "SensorReading", 2048, NULL, 5, NULL);
+    xTaskCreate(&SensorReading, "SensorReading", 2048, NULL, 4, NULL);
+    xTaskCreate(&dhtRead, "dhtRead", 2048, NULL, 5, NULL);
+
 
     while(1)
     {
@@ -151,7 +163,7 @@ void SensorReading(void *pvParameter)
     vTaskDelete(NULL);
 }
 
-
+//*****************************************************************************************************
 
 static void mqtt_app_start(void)
 {
@@ -168,6 +180,8 @@ static void mqtt_app_start(void)
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_start(client);
 }
+
+//*****************************************************************************************************
 
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 {
@@ -214,4 +228,30 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
         break;
     }
     return ESP_OK;
+}
+
+//*****************************************************************************************************
+
+void dhtRead()
+{
+    ESP_LOGI("DHT", "Initializing DHT READ");
+    DHT11_init(DHT_PIN);
+
+
+    while(1)
+    {
+        dht_value = DHT11_read();
+
+        if(dht_value.status == DHT11_OK)
+        {
+            ESP_LOGI("DHT", "READ SUCESSFULL");
+            ESP_LOGI("DHT", "Temp = %2.2f, Hum = %d\n", dht_value.temperature, dht_value.humidity);
+        }else{
+            ESP_LOGI("DHT", "READ ERROR = %d\n", dht_value.status);
+        }
+
+
+        vTaskDelay(READ_DHT_PERIOD/portTICK_PERIOD_MS);
+    }
+
 }
