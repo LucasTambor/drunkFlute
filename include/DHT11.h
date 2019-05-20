@@ -4,9 +4,9 @@
 #include "driver/gpio.h"
 
 enum dht11_status {
-    DHT11_CRC_ERROR = -2,
-    DHT11_TIMEOUT_ERROR,
-    DHT11_OK
+    DHT11_OK = 0,
+    DHT11_CRC_ERROR,
+    DHT11_TIMEOUT_ERROR
 };
 
 typedef struct{
