@@ -21,7 +21,8 @@
                 "/home/tambor/esp/esp-idf/components/spi_flash/include",
                 "/home/tambor/esp/esp-idf/components/log/include",
                 "${workspaceFolder}/build/include",
-                "${workspaceFolder}/include"
+                "${workspaceFolder}/include",
+                "/home/tambor/esp/esp-idf/components/mqtt/esp-mqtt/include"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang",

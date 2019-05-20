@@ -2,3 +2,4 @@ sdkconfig
 sdkconfig.old
 .vscode/ipch/
 build/
+.vscode
