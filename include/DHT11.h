@@ -6,7 +6,8 @@
 enum dht11_status {
     DHT11_OK = 0,
     DHT11_CRC_ERROR,
-    DHT11_TIMEOUT_ERROR
+    DHT11_TIMEOUT_ERROR,
+    DHT_OUT_OF_BOUNDS_ERROR,
 };
 
 typedef struct{

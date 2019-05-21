@@ -81,6 +81,13 @@ dht_t _crcError() {
 
 //*******************************************************************************************
 
+dht_t _outOfBoundsError() {
+    dht_t outOfBoundsError = {DHT_OUT_OF_BOUNDS_ERROR, -1, -1};
+    return outOfBoundsError;
+}
+
+//*******************************************************************************************
+
 dht_t DHT11_read() {
     /* Tried to sense too son since last read (dht11 needs ~2 seconds to make a new read) */
     if(esp_timer_get_time() - 2000000 < last_read_time) {
@@ -109,10 +116,15 @@ dht_t DHT11_read() {
     }
 
     if(_checkCRC(data) != DHT11_CRC_ERROR) {
-        last_read.status = DHT11_OK;
-        last_read.temperature = data[2];
-        last_read.humidity = data[0];
-        return last_read;
+        if(data[0] > 100)
+        {
+            return _outOfBoundsError();
+        }else{
+            last_read.status = DHT11_OK;
+            last_read.temperature = data[2];
+            last_read.humidity = data[0];
+            return last_read;
+        }
     } else {
         return last_read = _crcError();
     }
