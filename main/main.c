@@ -25,21 +25,22 @@
 // Heart beat blink period
 #define BLINK_PERIOD    1000
 
-// Sensor Period
-#define SENSOR_PERIOD   5000
+// MQ3 Sensor Period
+#define SENSOR_PERIOD   60000
 #define SENSOR_N_VALUES 10 
 #define LED_PIN     GPIO_NUM_2
 
 // DHT
 #define DHT_PIN     32
-#define READ_DHT_PERIOD 2000
+#define READ_DHT_PERIOD 60000
 // Prototypes
-esp_err_t event_handler(void *ctx, system_event_t *event);
+esp_err_t wifi_event_handler(void *ctx, system_event_t *event);
+static void wifi_init(void);
 void HeartBeat(void *pvParameter);
 void SensorReading(void *pvParameter);
 static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event);
-static void mqtt_app_start(void);
-void dhtRead();
+static esp_mqtt_client_handle_t mqtt_app_start(void);
+void dhtRead(void *pvParameter);
 void sendMqtt();
 //*****************************************************************************************************
 
@@ -49,47 +50,46 @@ dht_t dht_value;
 
 //*****************************************************************************************************
 // MQTT Cloud INFO
-const char MQTT_URI[] = "mqtt://postman.cloudmqtt.com";
-const char MQTT_USERNAME[] = "mggphudi";
-const char MQTT_PASSWORD[] = "wauG8UCgVkct";
-const uint32_t MQTT_PORT = 17936;
+const char MQTT_URI[] = "mqtt://io.adafruit.com";
+const char MQTT_USERNAME[] = "Tambor";
+const char MQTT_PASSWORD[] = "be9dba72f78445fbb91d63d7b1ef4989";
+const uint32_t MQTT_PORT = 1883;
 static const char *TAG_MQTT = "MQTT_SAMPLE";
 
+const char temp_topic[] = "Tambor/f/temperatura";
+const char hum_topic[] = "Tambor/f/umidade";
+const char mq3_topic[] = "Tambor/f/mq3";
+
+esp_mqtt_client_handle_t globalClient;
+
+// SemaphoreHandle_t xSemaphore_mq3 = NULL;
+// SemaphoreHandle_t xSemaphore_dht = NULL;
 //*****************************************************************************************************
 
 void app_main(void)
 {
     nvs_flash_init();
-    tcpip_adapter_init();
-    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
-    ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
-    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
-    wifi_config_t sta_config = {
-        .sta = {
-            .ssid = "Teste1",
-            .password = "pelepelezando",
-            .bssid_set = false
-        }
-    };
-    ESP_ERROR_CHECK( esp_wifi_set_config(WIFI_IF_STA, &sta_config) );
-    ESP_ERROR_CHECK( esp_wifi_start() );
-    ESP_ERROR_CHECK( esp_wifi_connect() );
-    
-    ESP_LOGI("MAIN", "Inicio");
+    wifi_init();
 
+    // MQTT Config
+    globalClient = mqtt_app_start();
+    
     gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 
+    // ADC Config
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(ADC1_CHANNEL_5,ADC_ATTEN_DB_6);
 
-    mqtt_app_start();
 
+    // Task creation
     xTaskCreate(&HeartBeat, "HB", 1024, NULL, 2, NULL);
-    xTaskCreate(&SensorReading, "SensorReading", 2048, NULL, 4, NULL);
+    xTaskCreate(&SensorReading, "SensorReading", 2048, NULL, 3, NULL);
     xTaskCreate(&dhtRead, "dhtRead", 2048, NULL, 5, NULL);
+    // xTaskCreate(&sendMqtt, "sendMqtt", 1024, NULL, 4, NULL);
 
+    // Mutex creation
+    // xSemaphore_dht = xSemaphoreCreateMutex();
+    // xSemaphore_mq3 = xSemaphoreCreateMutex();
 
     while(1)
     {
@@ -99,9 +99,48 @@ void app_main(void)
 
 //*****************************************************************************************************
 
-esp_err_t event_handler(void *ctx, system_event_t *event)
+esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
 {
+   switch (event->event_id) {
+        case SYSTEM_EVENT_STA_START:
+            esp_wifi_connect();
+            break;
+        case SYSTEM_EVENT_STA_GOT_IP:
+            xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+
+            break;
+        case SYSTEM_EVENT_STA_DISCONNECTED:
+            esp_wifi_connect();
+            xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+            break;
+        default:
+            break;
+    }
     return ESP_OK;
+}
+
+//*****************************************************************************************************
+static void wifi_init(void)
+{
+    tcpip_adapter_init();
+    wifi_event_group = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL));
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+   wifi_config_t sta_config = {
+        .sta = {
+            .ssid = "Teste1",
+            .password = "pelepelezando",
+            .bssid_set = false
+        },
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &sta_config));
+    ESP_LOGI("wifi_init", "start the WIFI SSID:[%s]", "Teste1");
+    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_LOGI("wifi_init", "Waiting for wifi");
+    xEventGroupWaitBits(wifi_event_group, CONNECTED_BIT, false, true, portMAX_DELAY);
 }
 
 //*****************************************************************************************************
@@ -126,7 +165,7 @@ void SensorReading(void *pvParameter)
     uint8_t idx = 0;
     float valueV = 0;
 
-
+    char buf[10];
 
     while(1)
     {
@@ -150,7 +189,13 @@ void SensorReading(void *pvParameter)
 
 
         valueRaw = valueRaw/SENSOR_N_VALUES;
+
+        
         valueV = 2 * (float)valueRaw*3.6/4095;
+        
+        sprintf(buf, "%2.2f", valueV);
+        esp_mqtt_client_publish(globalClient, mq3_topic, buf, 0, 0, 0);
+
 
 
         ESP_LOGI("SensorReading", "valueRaw = %d\n", valueRaw);
@@ -165,7 +210,7 @@ void SensorReading(void *pvParameter)
 
 //*****************************************************************************************************
 
-static void mqtt_app_start(void)
+static esp_mqtt_client_handle_t mqtt_app_start(void)
 {
     const esp_mqtt_client_config_t mqtt_cfg = {
         .uri = MQTT_URI,
@@ -174,11 +219,14 @@ static void mqtt_app_start(void)
         .port = MQTT_PORT,
         .event_handle = mqtt_event_handler,
         
+        
         // .user_context = (void *)your_context
     };
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_start(client);
+
+    return client;
 }
 
 //*****************************************************************************************************
@@ -191,23 +239,16 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG_MQTT, "MQTT_EVENT_CONNECTED");
-            msg_id = esp_mqtt_client_subscribe(client, "/topic/qos0", 0);
-            ESP_LOGI(TAG_MQTT, "sent subscribe successful, msg_id=%d", msg_id);
-
-            msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
-            ESP_LOGI(TAG_MQTT, "sent subscribe successful, msg_id=%d", msg_id);
-
-            msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos1");
-            ESP_LOGI(TAG_MQTT, "sent unsubscribe successful, msg_id=%d", msg_id);
-            break;
+            // msg_id = esp_mqtt_client_subscribe(client, "Tambor/f/qos0", 0);
+        break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG_MQTT, "MQTT_EVENT_DISCONNECTED");
-            break;
+        break;
 
         case MQTT_EVENT_SUBSCRIBED:
             ESP_LOGI(TAG_MQTT, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-            msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-            ESP_LOGI(TAG_MQTT, "sent publish successful, msg_id=%d", msg_id);
+            // msg_id = esp_mqtt_client_publish(client, "Tambor/f/qos0", "20", 0, 0, 0);
+            // ESP_LOGI(TAG_MQTT, "sent publish successful, msg_id=%d", msg_id);
             break;
         case MQTT_EVENT_UNSUBSCRIBED:
             ESP_LOGI(TAG_MQTT, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -232,24 +273,33 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 
 //*****************************************************************************************************
 
-void dhtRead()
+void dhtRead(void *pvParameter)
 {
     ESP_LOGI("DHT", "Initializing DHT READ");
     DHT11_init(DHT_PIN);
-
+    dht_t actual_read_dht;
+    char buf[10];
 
     while(1)
     {
-        dht_value = DHT11_read();
+        actual_read_dht = DHT11_read();
 
-        if(dht_value.status == DHT11_OK)
+        if(actual_read_dht.status == DHT11_OK)
         {
+            dht_value = actual_read_dht;
+
+            
+
             ESP_LOGI("DHT", "READ SUCESSFULL");
             ESP_LOGI("DHT", "Temp = %2.2f, Hum = %d\n", dht_value.temperature, dht_value.humidity);
         }else{
             ESP_LOGI("DHT", "READ ERROR = %d\n", dht_value.status);
         }
 
+        sprintf(buf, "%2.2f", dht_value.temperature);
+        esp_mqtt_client_publish(globalClient, temp_topic, buf, 0, 0, 0);
+        sprintf(buf, "%d", dht_value.humidity);
+        esp_mqtt_client_publish(globalClient, hum_topic, buf, 0, 0, 0);
 
         vTaskDelay(READ_DHT_PERIOD/portTICK_PERIOD_MS);
     }
